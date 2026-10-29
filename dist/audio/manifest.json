@@ -1,0 +1,18 @@
+{
+  "voice": "Microsoft Zira Desktop",
+  "locale": "en-US",
+  "kind": "offline-synthetic",
+  "format": "mp3",
+  "bitrate": 48000,
+  "rate": -1,
+  "count": 3000,
+  "totalBytes": 33881976.0,
+  "durationRangeSeconds": [
+    1.294,
+    2.499
+  ],
+  "meanSeconds": 1.782,
+  "corrections": {
+    "28-D14": "immunoglobulin"
+  }
+}
