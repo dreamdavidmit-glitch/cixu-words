@@ -1,18 +1,20 @@
 {
-  "voice": "Microsoft Zira Desktop",
+  "voice": "en-US-EmmaMultilingualNeural",
+  "voiceName": "Emma",
   "locale": "en-US",
-  "kind": "offline-synthetic",
+  "kind": "neural-synthetic-offline-cached",
+  "rate": "-5%",
   "format": "mp3",
-  "bitrate": 48000,
-  "rate": -1,
+  "bitrate": 64000,
   "count": 3000,
-  "totalBytes": 33881976.0,
+  "totalBytes": 32371224,
   "durationRangeSeconds": [
-    1.294,
-    2.499
+    0.75,
+    2.013
   ],
-  "meanSeconds": 1.782,
+  "meanSeconds": 1.259,
   "corrections": {
     "28-D14": "immunoglobulin"
-  }
+  },
+  "generatedOn": "2026-10-30"
 }

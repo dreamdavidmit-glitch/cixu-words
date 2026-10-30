@@ -6,6 +6,9 @@
   // correction and early extra practice do not count as spaced successes.
   const LEGACY_INTERVALS = [1, 3, 7, 14, 30];
   const SCHEDULER_VERSION = 2;
+  // Product defaults for delayed checks, not measured personal forgetting rates.
+  const SHORT_DELAY_MS = 20 * 60 * 1000;
+  const LONG_TERM_GAP_MS = 8 * 60 * 60 * 1000;
   function day(date = new Date()) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   }
@@ -14,23 +17,42 @@
   function daysBetween(from, to) { return Math.round((Date.parse(to + 'T12:00:00Z') - Date.parse(from + 'T12:00:00Z')) / 86400000); }
   function fresh() { return {version: VERSION, startDate: day(), words: {}, lists: {}, activity: {}, settings: {rate: 1}, session: null}; }
   function listState(state, id) { return state.lists[id] || (state.lists[id] = {groups: [], completedAt: null, bestScore: null, lastScore: null}); }
+  function validStamp(value) { return Number.isSafeInteger(value) && value >= 0 && value <= 8640000000000000; }
+  function retrievalDefaults(w) {
+    for (const key of ['lastSeenAt', 'delayedDueAt', 'checkedAt']) if (!validStamp(w[key])) w[key] = null;
+    if (!Number.isSafeInteger(w.longTermSuccesses) || w.longTermSuccesses < 0) w.longTermSuccesses = 0;
+    if (!validDay(w.lastLongTermSuccessDate)) w.lastLongTermSuccessDate = null;
+    return w;
+  }
   function migrateSchedule(w) {
-    if (w.schedulerVersion === SCHEDULER_VERSION) return w;
+    if (w.schedulerVersion === SCHEDULER_VERSION) return retrievalDefaults(w);
     w.repetitions = Math.max(0, Math.min(4, w.stage || 0));
     w.intervalDays = w.repetitions ? (validDay(w.lastScheduled) && validDay(w.due) ? Math.max(1, daysBetween(w.lastScheduled, w.due)) : LEGACY_INTERVALS[w.repetitions - 1]) : 0;
     w.ease = 2.5; w.lastReviewed = validDay(w.lastScheduled) ? w.lastScheduled : null;
     w.lapses = 0; w.lastLapseDate = null; w.schedulerVersion = SCHEDULER_VERSION;
-    return w;
+    return retrievalDefaults(w);
   }
   function wordState(state, id) {
     if (!state.words[id]) state.words[id] = {seen: false, attempts: 0, correct: 0, wrong: 0, stage: 0, due: null, lastScheduled: null};
     return migrateSchedule(state.words[id]);
   }
   function touch(state, today = day()) { state.activity[today] = (state.activity[today] || 0) + 1; }
-  function see(state, id) { wordState(state, id).seen = true; touch(state); }
-  function answer(state, id, right, today = day()) {
-    if (!validDay(today)) throw new Error('无效的复习日期');
+  function see(state, id, now = Date.now()) {
+    if (!validStamp(now)) throw new Error('无效的学习时间');
     const w = wordState(state, id);
+    w.seen = true; w.lastSeenAt = now;
+    // Looking at the meaning again restarts an outstanding short-delay check.
+    if (w.delayedDueAt !== null) w.delayedDueAt = Math.max(w.delayedDueAt, now + SHORT_DELAY_MS);
+    touch(state, day(new Date(now)));
+  }
+  function answer(state, id, right, today = day(), now = Date.now()) {
+    if (!validDay(today)) throw new Error('无效的复习日期');
+    if (!validStamp(now)) throw new Error('无效的答题时间');
+    const w = wordState(state, id);
+    const previousScheduled = w.lastScheduled;
+    const previouslyDue = validDay(w.due) && w.due <= today;
+    const timeSinceMeaning = w.lastSeenAt === null ? null : now - w.lastSeenAt;
+    const shortCheckReady = w.delayedDueAt !== null && now >= w.delayedDueAt && timeSinceMeaning !== null && timeSinceMeaning >= SHORT_DELAY_MS;
     w.attempts++; w.correct += right ? 1 : 0; w.wrong += right ? 0 : 1;
     if (!right) {
       // Penalize a lapse once per calendar day, not on every retry.
@@ -41,29 +63,56 @@
       }
       w.repetitions = 0; w.intervalDays = 0; w.stage = 0;
       w.due = today; w.lastScheduled = null;
+      // Feedback reveals the meaning, so a failed/guessed answer starts a fresh
+      // delay rather than allowing an immediate retry to count as retention.
+      w.lastSeenAt = now; w.delayedDueAt = now + SHORT_DELAY_MS;
     } else if (w.lastScheduled !== today && (!w.due || w.due <= today)) {
-      // q=4 keeps the current easiness factor unchanged in SM-2.
-      w.intervalDays = w.repetitions === 0 ? 1 : w.repetitions === 1 ? 6 : Math.min(36500, Math.ceil(w.intervalDays * w.ease));
-      w.repetitions++; w.stage = Math.min(4, w.repetitions);
+      // A due answer shortly after seeing the meaning is rehearsal, not a
+      // spaced success. Restart at one day without penalizing easiness.
+      if (w.repetitions > 0 && timeSinceMeaning !== null && timeSinceMeaning < LONG_TERM_GAP_MS) {
+        w.intervalDays = 1; w.repetitions = 1;
+        w.delayedDueAt = Math.max(now, w.lastSeenAt) + SHORT_DELAY_MS;
+      } else {
+        // q=4 keeps the current easiness factor unchanged in SM-2.
+        w.intervalDays = w.repetitions === 0 ? 1 : w.repetitions === 1 ? 6 : Math.min(36500, Math.ceil(w.intervalDays * w.ease));
+        w.repetitions++;
+      }
+      w.stage = Math.min(4, w.repetitions);
       w.due = addDays(today, w.intervalDays); w.lastScheduled = today;
+    }
+    if (right) {
+      if (shortCheckReady) { w.checkedAt = now; w.delayedDueAt = null; }
+      else if (w.checkedAt === null && w.delayedDueAt === null) {
+        if (w.lastSeenAt === null) w.lastSeenAt = now;
+        w.delayedDueAt = Math.max(now, w.lastSeenAt) + SHORT_DELAY_MS;
+      }
+      // Only a genuinely delayed, cross-day due review contributes to this
+      // count. Immediate exercises and same-day repeats remain practice.
+      if (previouslyDue && previousScheduled && previousScheduled < today && timeSinceMeaning !== null && timeSinceMeaning >= LONG_TERM_GAP_MS && w.lastLongTermSuccessDate !== today) {
+        w.longTermSuccesses++; w.lastLongTermSuccessDate = today;
+      }
     }
     w.lastReviewed = today;
     touch(state, today);
-    return reviewInfo(state, id, today);
+    return reviewInfo(state, id, today, now);
   }
-  function reviewInfo(state, id, today = day()) {
+  function reviewInfo(state, id, today = day(), now = Date.now()) {
     const original = state.words[id];
-    if (!original) return {due: null, isDue: false, daysUntil: null, overdueDays: 0, intervalDays: 0, repetitions: 0, ease: 2.5, lapses: 0, priority: -1};
+    if (!original) return {due: null, isDue: false, isDayDue: false, isShortDue: false, shortDueAt: null, shortMinutesUntil: null, checkedAt: null, longTermSuccesses: 0, daysUntil: null, overdueDays: 0, intervalDays: 0, repetitions: 0, ease: 2.5, lapses: 0, priority: -1};
     // Keep inspection pure; migration is applied only to this local copy.
     const w = migrateSchedule({...original});
     const daysUntil = validDay(w.due) ? daysBetween(today, w.due) : null;
-    const isDue = daysUntil !== null && daysUntil <= 0;
+    const isDayDue = daysUntil !== null && daysUntil <= 0;
+    const isShortDue = w.delayedDueAt !== null && now >= w.delayedDueAt;
+    const isDue = isDayDue || isShortDue;
+    const shortMinutesUntil = w.delayedDueAt === null ? null : Math.max(0, Math.ceil((w.delayedDueAt - now) / 60000));
     const overdueDays = daysUntil === null ? 0 : Math.max(0, -daysUntil);
-    const priority = isDue ? 100000 + overdueDays * 100 + Math.min(99, w.lapses * 3 + (w.wrong || 0)) : daysUntil === null ? -1 : -daysUntil;
-    return {due: w.due, isDue, daysUntil, overdueDays, intervalDays: w.intervalDays, repetitions: w.repetitions, ease: w.ease, lapses: w.lapses, priority};
+    const priority = isDue ? 100000 + overdueDays * 100 + (isShortDue ? 50 : 0) + Math.min(49, w.lapses * 3 + (w.wrong || 0)) : daysUntil === null ? -1 : -daysUntil;
+    return {due: w.due, isDue, isDayDue, isShortDue, shortDueAt: w.delayedDueAt, shortMinutesUntil, checkedAt: w.checkedAt, longTermSuccesses: w.longTermSuccesses, daysUntil, overdueDays, intervalDays: w.intervalDays, repetitions: w.repetitions, ease: w.ease, lapses: w.lapses, priority};
   }
-  function reviewQueue(state, words, today = day()) {
-    return words.map(word => ({word, info: reviewInfo(state, word.id, today)}))
+  function isDue(state, id, now = Date.now()) { return reviewInfo(state, id, day(new Date(now)), now).isDue; }
+  function reviewQueue(state, words, today = day(), now = Date.now()) {
+    return words.map(word => ({word, info: reviewInfo(state, word.id, today, now)}))
       .sort((a, b) => b.info.priority - a.info.priority || a.word.id.localeCompare(b.word.id, undefined, {numeric: true}))
       .map(item => item.word);
   }
@@ -77,15 +126,21 @@
     return shuffle(picked.map(w => ({id: w.id, text: w.meaning})), random);
   }
   function makeSession(kind, listId, group, ids, phase = 'learn') {
-    return {kind, listId, group, allIds: [...ids], ids: phase === 'quiz' ? shuffle(ids) : [...ids], phase, index: 0, revealed: false, selected: null, options: null, wrongIds: [], round: 0, firstScore: null, roundCorrect: 0, totalAnswered: 0};
+    return {kind, listId, group, primaryIds: [...ids], allIds: [...ids], ids: phase === 'quiz' ? shuffle(ids) : [...ids], phase, index: 0, revealed: false, recalled: false, guessed: false, selected: null, options: null, wrongIds: [], round: 0, firstScore: null, roundCorrect: 0, totalAnswered: 0};
   }
-  function beginQuiz(session) { session.phase = 'quiz'; session.ids = shuffle(session.ids); session.index = 0; session.wrongIds = []; session.roundCorrect = 0; session.selected = null; session.options = null; }
-  function retry(session) { session.ids = [...session.wrongIds]; session.phase = 'learn'; session.index = 0; session.revealed = false; session.selected = null; session.options = null; session.round++; }
-  function submit(state, id) {
+  function beginQuiz(session, extraIds = []) {
+    if (!session.primaryIds) session.primaryIds = [...session.allIds];
+    const additions = session.round === 0 ? extraIds.filter(id => !session.ids.includes(id)) : [];
+    session.ids = shuffle([...new Set([...session.ids, ...additions])]);
+    if (session.round === 0) session.allIds = [...new Set([...session.allIds, ...additions])];
+    session.phase = 'quiz'; session.index = 0; session.wrongIds = []; session.roundCorrect = 0; session.recalled = false; session.guessed = false; session.selected = null; session.options = null;
+  }
+  function retry(session) { session.ids = [...session.wrongIds]; session.phase = 'learn'; session.index = 0; session.revealed = false; session.recalled = false; session.guessed = false; session.selected = null; session.options = null; session.round++; }
+  function submit(state, id, guessed = false) {
     const s = state.session;
     if (!s || s.phase !== 'quiz' || s.selected !== null || !s.options?.some(o => o.id === id)) return false;
-    const current = s.ids[s.index], right = current === id;
-    s.selected = id; s.totalAnswered++; s.roundCorrect += right ? 1 : 0;
+    const current = s.ids[s.index], right = current === id && !guessed;
+    s.selected = id; s.guessed = guessed === true; s.totalAnswered++; s.roundCorrect += right ? 1 : 0;
     if (!right && !s.wrongIds.includes(current)) s.wrongIds.push(current);
     answer(state, current, right);
     return true;
@@ -118,6 +173,9 @@
         n.schedulerVersion = 0;
         migrateSchedule(n);
       }
+      for (const key of ['lastSeenAt', 'delayedDueAt', 'checkedAt']) n[key] = validStamp(w[key]) ? w[key] : null;
+      n.longTermSuccesses = Number.isSafeInteger(w.longTermSuccesses) && w.longTermSuccesses >= 0 ? Math.min(1000000, w.longTermSuccesses) : 0;
+      n.lastLongTermSuccessDate = validDay(w.lastLongTermSuccessDate) ? w.lastLongTermSuccessDate : null;
     }
     for (let i = 1; i <= 30; i++) {
       const l = raw.lists[i]; if (!l) continue;
@@ -131,6 +189,8 @@
     if (s && ['group','final','review','mistakes'].includes(s.kind) && ['learn','quiz','repair','done'].includes(s.phase) && Number.isInteger(s.listId) && s.listId >= 1 && s.listId <= 30 && Number.isInteger(s.group) && s.group >= 0 && s.group < 10 && Array.isArray(s.ids) && s.ids.length > 0 && s.ids.length <= 3000 && s.ids.every(id => knownIds.has(id)) && Array.isArray(s.allIds) && s.allIds.length > 0 && s.allIds.length <= 3000 && s.allIds.every(id => knownIds.has(id)) && Number.isInteger(s.index) && s.index >= 0 && s.index < s.ids.length) {
       const n = makeSession(s.kind, s.listId, s.group, s.allIds);
       n.phase = s.phase; n.ids = s.ids; n.index = s.index; n.revealed = s.revealed === true;
+      n.primaryIds = Array.isArray(s.primaryIds) && s.primaryIds.length && s.primaryIds.every(id => s.allIds.includes(id)) ? [...new Set(s.primaryIds)] : [...s.allIds];
+      n.recalled = s.recalled === true; n.guessed = s.guessed === true;
       n.round = Number.isInteger(s.round) && s.round >= 0 ? s.round : 0;
       n.firstScore = Number.isFinite(s.firstScore) && s.firstScore >= 0 && s.firstScore <= 100 ? s.firstScore : null;
       n.roundCorrect = Number.isInteger(s.roundCorrect) && s.roundCorrect >= 0 && s.roundCorrect <= s.ids.length ? s.roundCorrect : 0;
@@ -141,7 +201,7 @@
     }
     return result;
   }
-  const api = {VERSION, SCHEDULER_VERSION, day, addDays, validDay, daysBetween, fresh, listState, wordState, see, answer, reviewInfo, reviewQueue, shuffle, overlap, choices, makeSession, beginQuiz, retry, submit, finish, validate};
+  const api = {VERSION, SCHEDULER_VERSION, SHORT_DELAY_MS, LONG_TERM_GAP_MS, day, addDays, validDay, daysBetween, fresh, listState, wordState, see, answer, reviewInfo, isDue, reviewQueue, shuffle, overlap, choices, makeSession, beginQuiz, retry, submit, finish, validate};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.LearningCore = api;
 })(typeof window !== 'undefined' ? window : globalThis);
