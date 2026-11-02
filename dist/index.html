@@ -2,18 +2,22 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#234f43">
-  <meta name="description" content="词序：把 30 个雅思阅读词汇 List 变成每天可完成的记忆、测试与复习。">
-  <title>词序 · READING 30</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23234f43'/%3E%3Cpath d='M17 18h14c5 0 8 3 8 7v24c-3-4-8-5-13-5h-9zm30 0H34c-5 0-8 3-8 7v24c3-4 8-5 13-5h8z' fill='none' stroke='%23fffaf0' stroke-width='3' stroke-linejoin='round'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=20261030-final">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f5f4ef" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1311" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="词序：雅思阅读与听力词汇。每天一个 list，主动回想、听写拼写、间隔复习，并把做题时的生词导入穿插学习。">
+  <title>词序 · 雅思词汇</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231f6b52'/%3E%3Ctext x='32' y='44' font-size='34' text-anchor='middle' fill='%23ffffff' font-family='PingFang SC,Microsoft YaHei,sans-serif'%3E%E5%BA%8F%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css?v=20261101">
 </head>
 <body>
   <div id="app"><div class="boot-message" role="status">正在打开词序…</div></div>
-  <noscript><div class="empty">请在浏览器中启用 JavaScript，以使用学习、测试和进度保存功能。</div></noscript>
+  <noscript><div class="boot-message">请在浏览器中启用 JavaScript，以使用学习、测试和进度保存功能。</div></noscript>
   <script src="vocab.js?v=20261030-final"></script>
-  <script src="core.js?v=20261030-final"></script>
-  <script src="app.js?v=20261030-final"></script>
+  <script src="listening.js?v=20261102-final"></script>
+  <script src="core.js?v=20261102-final"></script>
+  <script src="importer.js?v=20261101"></script>
+  <script src="app.js?v=20261102-final"></script>
 </body>
 </html>
