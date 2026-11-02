@@ -3,13 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' https://dict.youdao.com; connect-src 'self' https://api.github.com https://dict.youdao.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#f5f4ef" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0e1311" media="(prefers-color-scheme: dark)">
   <meta name="description" content="词序：雅思阅读与听力词汇。每天一个 list，主动回想、听写拼写、间隔复习，并把做题时的生词导入穿插学习。">
   <title>词序 · 雅思词汇</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%231f6b52'/%3E%3Ctext x='32' y='44' font-size='34' text-anchor='middle' fill='%23ffffff' font-family='PingFang SC,Microsoft YaHei,sans-serif'%3E%E5%BA%8F%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css?v=20261101">
+  <link rel="stylesheet" href="styles.css?v=20261102-cloud">
 </head>
 <body>
   <div id="app"><div class="boot-message" role="status">正在打开词序…</div></div>
@@ -18,6 +19,7 @@
   <script src="listening.js?v=20261102-final"></script>
   <script src="core.js?v=20261102-final"></script>
   <script src="importer.js?v=20261101"></script>
-  <script src="app.js?v=20261102-final"></script>
+  <script src="sync.js?v=20261102-cloud"></script>
+  <script src="app.js?v=20261102-cloud"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const C = window.LearningCore, Importer = window.WordImporter;
+  const C = window.LearningCore, Importer = window.WordImporter, Cloud = window.CloudProgress;
   const KEY = 'reading30.progress.v1';
   const ASSET_V = '20261102';
   const AUDIO_V = '20261030-emma';
@@ -60,13 +60,16 @@
   catch (e) { state = C.fresh(); loadError = '未能读取原有进度，请先在「设置」导入备份。为保护原数据，本次不会自动覆盖保存。'; }
   const ui = {page: 'home', list: '1', search: '', mistakeFilter: 'weak', revealed: new Set(), draft: '', autoKey: '', serial: 0,
     imp: {target: null, busy: false, status: '', file: '', rows: null, error: '', paste: false, filter: ''}};
-  let audio = null, audioToken = 0, toastTimer, lastHtml = '', memo = null;
+  let audio = null, audioToken = 0, toastTimer, lastHtml = '', memo = null, cloudReady = false;
   const app = document.getElementById('app');
   const track = () => state.settings.track;
   function persist() {
     memo = null;
     if (loadError) return;
-    try { localStorage.setItem(KEY, JSON.stringify(state)); saveError = ''; }
+    try {
+      localStorage.setItem(KEY, JSON.stringify(state)); saveError = '';
+      if (cloudReady && Cloud?.info().configured) Cloud.queue({version: C.VERSION, state});
+    }
     catch (e) { saveError = '当前浏览器无法保存进度（空间已满或处于隐私模式），请在「设置」导出备份。'; }
   }
   function getWord(id) {
@@ -234,7 +237,7 @@
       <div class="main-col">
         <header class="mobile-top"><a class="brand" href="#" data-action="nav" data-page="home"><span class="brand-mark">序</span><span class="brand-text">词序</span></a>${switcher}<button type="button" class="icon-btn" data-action="nav" data-page="settings" aria-label="设置">${icon('settings')}</button></header>
         <main class="main" id="main">${alerts}${content}</main>
-        <footer class="app-footer">词表来自你的原文件 · 进度只保存在当前浏览器 · <button type="button" class="text-link" data-action="nav" data-page="settings">备份与说明</button></footer>
+        <footer class="app-footer">词表来自你的原文件 · ${Cloud?.info().configured ? '进度已连接 GitHub 云同步' : '进度先保存在当前浏览器'} · <button type="button" class="text-link" data-action="nav" data-page="settings">备份与说明</button></footer>
       </div>
       <nav class="tabbar" aria-label="底部导航">${NAV.slice(0, 5).map(navItem).join('')}</nav>
     </div>`;
@@ -877,11 +880,17 @@
   // ---- Settings ---------------------------------------------------------------------------
   function settings() {
     const st = state.settings;
+    const cloud = Cloud?.info() || {configured: false, mode: 'off', message: '不可用'};
     const sel = (id, options, value, label) => `<select id="${id}" aria-label="${label}">${options.map(([v, text]) => `<option value="${v}" ${String(v) === String(value) ? 'selected' : ''}>${text}</option>`).join('')}</select>`;
     const toggle = (id, on, label) => `<label class="switch"><input type="checkbox" id="${id}" ${on ? 'checked' : ''} aria-label="${label}"><span class="slider"></span></label>`;
     const mixOptions = C.MIX_COUNTS.map(n => [n, n ? `每组 ${n} 个（每个 list 约 ${n * 10} 个）` : '不穿插']);
     const row = (title, desc, control) => `<div class="settings-row"><div><h3>${title}</h3><p>${desc}</p></div>${control}</div>`;
-    shell(`${pageHead('按你的节奏来。', '学习数据只保存在当前浏览器。换设备前请导出备份。', 'PREFERENCES · 设置')}
+    const cloudPanel = cloud.configured ? `<div class="cloud-box"><div><strong>${esc(cloud.owner)}/${esc(cloud.repo)}</strong><p class="cloud-state ${esc(cloud.mode)}">${esc(cloud.message)}${cloud.syncedAt ? ` · ${new Date(cloud.syncedAt).toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit'})}` : ''}</p></div><div class="actions">${btn('立即保存', 'cloud-save', '', 'secondary')}${btn('断开此设备', 'cloud-disconnect', '', 'ghost')}</div></div>` : `<div class="cloud-setup"><p>连接后，网站会自动从私有仓库读取最新进度，并在学习后约 45 秒自动保存。密钥只存放在这台设备的浏览器里。</p><label>GitHub 密钥<input id="cloud-token" class="cloud-input" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…" aria-label="GitHub 细粒度访问密钥"></label>${btn('连接并开启自动同步', 'cloud-connect')}</div>`;
+    shell(`${pageHead('按你的节奏来。', cloud.configured ? '学习进度会同时保存在当前浏览器和 GitHub 私有仓库。' : '当前先保存在浏览器；连接 GitHub 后可跨设备继续。', 'PREFERENCES · 设置')}
+      <section class="card settings-card"><h2>GitHub 云进度</h2>${cloudPanel}
+        <p class="settings-note">进度仓库固定为 <b>dreamdavidmit-glitch/cixu-progress</b>。新设备首次打开时，在这里粘贴同一个密钥即可读取进度。</p>
+        ${cloud.configured ? '' : `<details class="cloud-help"><summary>第一次怎么连接？</summary><ol><li>打开 <a href="https://github.com/settings/personal-access-tokens/new?name=%E8%AF%8D%E5%BA%8F%E8%BF%9B%E5%BA%A6%E5%90%8C%E6%AD%A5&description=%E4%BB%85%E7%94%A8%E4%BA%8E%E8%AF%8D%E5%BA%8F%E7%BD%91%E7%AB%99%E4%BF%9D%E5%AD%98%E5%AD%A6%E4%B9%A0%E8%BF%9B%E5%BA%A6&target_name=dreamdavidmit-glitch&contents=write" target="_blank" rel="noopener">GitHub 专用密钥页面</a>。</li><li>Repository access 选择 <b>Only select repositories</b>，只勾选 <b>cixu-progress</b>。</li><li>Repository permissions 中确认 <b>Contents: Read and write</b>，生成后复制密钥并粘贴到上方。</li></ol></details>`}
+      </section>
       <section class="card settings-card"><h2>学习计划</h2>
         ${row('学习开始日期', '用于显示「学习第几天」，不会锁定或跳过任何 list。', `<input id="start-date" type="date" value="${esc(state.startDate)}" aria-label="学习开始日期">`)}
         ${row('阅读：每组穿插生词', '导入的阅读生词按顺序穿插进每个 10 词小组，并计入该 list 的整组检测。', sel('mix-reading', mixOptions, st.mix.reading, '阅读每组穿插生词数'))}
@@ -1114,6 +1123,23 @@
         notify('备份文件已导出。'); return;
       }
       case 'import-progress': document.getElementById('import-file').click(); return;
+      case 'cloud-connect': {
+        const token = document.getElementById('cloud-token')?.value.trim();
+        if (!token) { notify('请先粘贴 GitHub 密钥。'); return; }
+        el.disabled = true; el.textContent = '正在连接…';
+        Cloud.connect({owner: 'dreamdavidmit-glitch', repo: 'cixu-progress', token}).then(remote => {
+          if (remote?.app === 'reading30' && remote.state) {
+            state = C.validate(remote.state, catalog); localStorage.setItem(KEY, JSON.stringify(state));
+            stopAudio(); applyTheme(); notify('已读取 GitHub 上的学习进度。');
+          } else {
+            Cloud.queue({version: C.VERSION, state}, true); notify('已连接，正在上传当前进度。');
+          }
+          cloudReady = true; render();
+        }).catch(err => { el.disabled = false; el.textContent = '连接并开启自动同步'; notify(err.message || '无法连接 GitHub。'); render(); });
+        return;
+      }
+      case 'cloud-save': Cloud.queue({version: C.VERSION, state}, true); notify('正在保存到 GitHub…'); return;
+      case 'cloud-disconnect': Cloud.disconnect(); cloudReady = false; render(); notify('已断开此设备，GitHub 上的进度没有删除。'); return;
       case 'reset': modal('清空学习记录？', '会清除当前浏览器的阅读、听力进度和生词本。已经导出的备份不受影响。', '确认清空', () => { stopAudio(); loadError = ''; const keep = state.settings; state = C.fresh(); state.settings = keep; persist(); go('home'); notify('已开始新的学习计划。'); }, true); return;
     }
   });
@@ -1194,13 +1220,25 @@
     const optionsOpen = s.phase === 'quiz' && s.selected === null && (s.track === 'reading' ? s.recalled : s.spellOk !== null);
     if (/^[1-4]$/.test(e.key) && optionsOpen) app.querySelectorAll('[data-action="answer"]')[Number(e.key) - 1]?.click();
   });
-  window.addEventListener('pagehide', () => { recordVisible(); persist(); stopAudio(); });
+  window.addEventListener('pagehide', () => { recordVisible(); persist(); Cloud?.flush(); stopAudio(); });
   setInterval(() => { if (!document.hidden && ['home', 'review'].includes(ui.page) && !['search', 'nb-search'].includes(document.activeElement?.id) && !document.querySelector('.modal-backdrop')) render(); }, 30000);
   window.addEventListener('storage', e => {
     if (e.key !== KEY || !e.newValue) return;
     try { state = C.validate(JSON.parse(e.newValue), catalog); stopAudio(); applyTheme(); render(); notify('已同步同一浏览器另一个窗口的进度。'); } catch (err) { /* keep current state */ }
   });
+  Cloud?.onStatus(() => { if (ui.page === 'settings' && !document.activeElement?.classList?.contains('cloud-input')) render(); });
   applyTheme();
   persist();
   render();
+  (async () => {
+    if (!Cloud?.info().configured) { cloudReady = true; return; }
+    const remote = await Cloud.pull();
+    if (remote?.app === 'reading30' && remote.state) {
+      try {
+        state = C.validate(remote.state, catalog); localStorage.setItem(KEY, JSON.stringify(state));
+        stopAudio(); applyTheme(); render(); notify('已从 GitHub 恢复最新学习进度。');
+      } catch (_) { notify('GitHub 上的进度无法读取，已保留本机进度。'); }
+    } else Cloud.queue({version: C.VERSION, state}, true);
+    cloudReady = true;
+  })();
 })();

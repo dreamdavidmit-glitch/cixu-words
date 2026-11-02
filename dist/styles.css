@@ -424,6 +424,20 @@ kbd { padding: 2px 7px; border-radius: 6px; background: var(--surface); border: 
 /* Settings */
 .settings-card { margin-bottom: 16px; }
 .settings-card > h2 { margin-bottom: 4px; font-size: 16px; }
+.cloud-box, .cloud-setup { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 0; }
+.cloud-box p, .cloud-setup p { margin: 5px 0 0; color: var(--muted); }
+.cloud-state.synced { color: var(--good); }
+.cloud-state.error { color: var(--danger); }
+.cloud-state.syncing, .cloud-state.pending { color: var(--accent); }
+.cloud-setup { align-items: end; flex-wrap: wrap; }
+.cloud-setup > p { width: 100%; }
+.cloud-setup label { display: grid; gap: 7px; flex: 1; min-width: 240px; font-weight: 700; }
+.cloud-input { width: 100%; min-height: 42px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.settings-note { margin: 2px 0 10px; color: var(--muted); font-size: 13px; }
+.cloud-help { margin: 10px 0 4px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); }
+.cloud-help summary { cursor: pointer; font-weight: 700; }
+.cloud-help ol { margin: 12px 0 0; padding-left: 22px; color: var(--muted); line-height: 1.7; }
+.cloud-help a { color: var(--accent); font-weight: 700; }
 .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 0; border-bottom: 1px solid var(--line); }
 .settings-row:last-child { border-bottom: 0; padding-bottom: 0; }
 .settings-row > div:first-child { flex: 1; min-width: 0; }
